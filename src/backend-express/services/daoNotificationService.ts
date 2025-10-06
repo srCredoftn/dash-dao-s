@@ -28,18 +28,17 @@ function normalizeEmail(email: string | undefined | null): string | null {
  * - Optionnellement ajoute l’acteur, le super admin et les assignés de tâches
  */
 export function resolveDaoTeamUserIds(
-  dao: Dao | null | undefined,
+  _dao: Dao | null | undefined,
   users: User[],
   options: ResolveRecipientsOptions = {},
 ): string[] {
   const recipients = new Set<string>();
-  if (!dao) {
-    return Array.from(recipients);
-  }
-
-  const byId = new Map<string, User>(users.map((u) => [u.id, u]));
   const byEmail = new Map<string, User>();
+
   for (const user of users) {
+    if (user?.id) {
+      recipients.add(user.id);
+    }
     const key = normalizeEmail(user.email);
     if (key && !byEmail.has(key)) {
       byEmail.set(key, user);
@@ -48,32 +47,8 @@ export function resolveDaoTeamUserIds(
 
   const pushUserId = (userId: string | undefined | null) => {
     if (!userId) return;
-    const user = byId.get(userId);
-    if (user) recipients.add(user.id);
+    recipients.add(userId);
   };
-
-  const pushEmail = (email: string | undefined | null) => {
-    const key = normalizeEmail(email);
-    if (!key) return;
-    const user = byEmail.get(key);
-    if (user) recipients.add(user.id);
-  };
-
-  for (const member of dao.equipe || []) {
-    pushUserId(member.id);
-    pushEmail(member.email);
-  }
-
-  if (options.includeAssignments !== false) {
-    for (const task of dao.tasks || []) {
-      for (const assigned of task.assignedTo || []) {
-        pushUserId(assigned);
-        if (assigned.includes("@")) {
-          pushEmail(assigned);
-        }
-      }
-    }
-  }
 
   if (options.actorId) {
     pushUserId(options.actorId);
@@ -84,10 +59,13 @@ export function resolveDaoTeamUserIds(
   }
 
   if (options.includeAdmin !== false) {
-    const adminEmail = normalizeEmail(options.adminEmail);
+    const adminEmail =
+      normalizeEmail(options.adminEmail) || normalizeEmail(process.env.ADMIN_EMAIL);
     if (adminEmail) {
       const admin = byEmail.get(adminEmail);
-      if (admin) recipients.add(admin.id);
+      if (admin?.id) {
+        recipients.add(admin.id);
+      }
     }
   }
 
