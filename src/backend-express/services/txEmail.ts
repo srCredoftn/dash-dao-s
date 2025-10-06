@@ -578,6 +578,14 @@ export async function emailAllUsers(
       context: type || "emailAllUsers",
       invalid,
     });
+    await notifyInvalidEmails({
+      context: type || "emailAllUsers",
+      invalid,
+      stage: "emailAllUsers",
+      requestedCount: combined.length,
+      validCount: valid.length,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   if (valid.length === 0) {
