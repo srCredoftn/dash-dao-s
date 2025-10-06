@@ -303,6 +303,7 @@ export async function sendEmail(
         successCount,
       });
     } else {
+      lastTransportError = null;
       logger.info("Envoi terminé avec succès", "MAIL", {
         context: type,
         count: successCount,
