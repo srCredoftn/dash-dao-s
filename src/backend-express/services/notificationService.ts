@@ -332,3 +332,45 @@ class InMemoryNotificationService {
 }
 
 export const NotificationService = new InMemoryNotificationService();
+
+registerInvalidEmailReporter(async (report: InvalidEmailReport) => {
+  const contextLabel = report.context?.trim() || "opération d'email";
+  const stageLabel =
+    report.stage === "emailAllUsers"
+      ? "la diffusion d'un email groupé"
+      : "l'envoi d'un email";
+  const previewList = report.invalid.slice(0, 3).join(", ");
+  const remaining = Math.max(report.invalid.length - 3, 0);
+  const addressesSummary = previewList
+    ? `${previewList}${remaining > 0 ? ` (+${remaining} autres)` : ""}`
+    : "aucune adresse fournie";
+  const message = `Les adresses suivantes ont été ignorées lors de ${stageLabel} « ${contextLabel} » : ${addressesSummary}.`;
+
+  try {
+    await NotificationService.add({
+      type: "system",
+      title: "Adresses email invalides détectées",
+      message,
+      data: {
+        skipEmailMirror: true,
+        invalidEmails: report.invalid,
+        invalidEmailContext: contextLabel,
+        invalidEmailStage: report.stage,
+        invalidEmailCount: report.invalid.length,
+        invalidEmailValidCount: report.validCount,
+        invalidEmailRequestedCount: report.requestedCount,
+        invalidEmailTimestamp: report.timestamp,
+      },
+      recipients: "all",
+    });
+  } catch (error) {
+    logger.warn(
+      "Impossible de créer une notification pour les emails invalides",
+      "NOTIF",
+      {
+        message: String((error as Error)?.message || error),
+        context: contextLabel,
+      },
+    );
+  }
+});
