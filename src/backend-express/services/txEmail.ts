@@ -248,7 +248,8 @@ export async function sendEmail(
   type?: MailType,
 ): Promise<void> {
   const smtpSubject = (subject && subject.trim()) || "Gestion des DAOs 2SND";
-  const { valid: recipients, invalid } = sanitizeEmails(toArray(to), {
+  const requestedRecipients = toArray(to);
+  const { valid: recipients, invalid } = sanitizeEmails(requestedRecipients, {
     context: type || smtpSubject,
     logInvalid: false,
   });
@@ -257,6 +258,14 @@ export async function sendEmail(
     logger.warn("Invalid recipients skipped before send", "MAIL", {
       context: type || smtpSubject,
       invalid,
+    });
+    await notifyInvalidEmails({
+      context: type || smtpSubject,
+      invalid,
+      stage: "sendEmail",
+      requestedCount: requestedRecipients.length,
+      validCount: recipients.length,
+      timestamp: new Date().toISOString(),
     });
   }
 
