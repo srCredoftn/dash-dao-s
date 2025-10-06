@@ -364,12 +364,27 @@ router.post("/users", authenticate, requireAdmin, async (req, res) => {
     logger.audit("Utilisateur créé avec succès", req.user?.id, req.ip);
     return res.status(201).json(newUser);
   } catch (error) {
+    const message = String((error as Error)?.message || "");
     logger.error("Échec de création de l’utilisateur", "USER_CREATE", {
-      message: String((error as Error)?.message),
+      message,
     });
+
+    if (message.includes("User already exists")) {
+      return res.status(409).json({
+        error: "Un utilisateur avec cet email existe déjà.",
+        code: "USER_EMAIL_EXISTS",
+      });
+    }
+    if (message.includes("User name already taken")) {
+      return res.status(409).json({
+        error: "Ce nom est déjà utilisé.",
+        code: "USER_NAME_EXISTS",
+      });
+    }
+
     return res
       .status(500)
-      .json({ error: "��chec de création de l’utilisateur" });
+      .json({ error: "Échec de création de l’utilisateur" });
   }
 });
 
