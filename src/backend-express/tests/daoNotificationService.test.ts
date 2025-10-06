@@ -89,18 +89,12 @@ describe("resolveDaoTeamUserIds", () => {
     });
 
     expect(new Set(recipients)).toEqual(
-      new Set([
-        "user-chef",
-        "user-manual",
-        "user-assigned",
-        "user-extra",
-        "user-admin",
-      ]),
+      new Set(baseUsers.map((u) => u.id)),
     );
   });
 
-  it("returns empty list when dao is missing", () => {
+  it("returns all users when dao is missing", () => {
     const recipients = resolveDaoTeamUserIds(null, baseUsers);
-    expect(recipients).toEqual([]);
+    expect(new Set(recipients)).toEqual(new Set(baseUsers.map((u) => u.id)));
   });
 });
