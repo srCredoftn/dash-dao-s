@@ -148,7 +148,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const seenKey = "__seen_invalid_email_toasts__";
       const globalObj = window as unknown as Record<string, unknown>;
       const existing = globalObj[seenKey];
-      const seen = existing instanceof Set ? (existing as Set<string>) : new Set<string>();
+      const seen =
+        existing instanceof Set ? (existing as Set<string>) : new Set<string>();
       for (const n of notifications) {
         if (seen.has(n.id)) continue;
         const invalidList = Array.isArray(n.data?.invalidEmails)
@@ -157,9 +158,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (invalidList.length === 0) continue;
         const preview = invalidList.slice(0, 3).join(", ");
         const remaining =
-          invalidList.length > 3
-            ? ` (+${invalidList.length - 3} autres)`
-            : "";
+          invalidList.length > 3 ? ` (+${invalidList.length - 3} autres)` : "";
         const contextLabel =
           typeof n.data?.invalidEmailContext === "string" &&
           n.data.invalidEmailContext.trim()
@@ -169,9 +168,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           `Impossible d'envoyer un email pour « ${contextLabel} ».`,
         ];
         if (preview) {
-          descriptionParts.push(
-            `Adresses ignorées : ${preview}${remaining}.`,
-          );
+          descriptionParts.push(`Adresses ignorées : ${preview}${remaining}.`);
         }
         toast({
           title: "Adresses email invalides détectées",

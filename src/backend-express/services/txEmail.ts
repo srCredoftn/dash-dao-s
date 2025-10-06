@@ -22,7 +22,9 @@ export interface InvalidEmailReport {
   timestamp: string;
 }
 
-type InvalidEmailReporter = (report: InvalidEmailReport) => void | Promise<void>;
+type InvalidEmailReporter = (
+  report: InvalidEmailReport,
+) => void | Promise<void>;
 
 let invalidEmailReporter: InvalidEmailReporter | null = null;
 
