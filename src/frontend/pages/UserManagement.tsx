@@ -122,6 +122,14 @@ export default function UserManagement() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deletePassword, setDeletePassword] = useState("");
+
+  const clearFieldError = (field: keyof NewUserForm) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const { [field]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [processingDelete, setProcessingDelete] = useState(false);
 
