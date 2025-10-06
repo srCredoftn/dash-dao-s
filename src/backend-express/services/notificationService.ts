@@ -4,7 +4,7 @@ Domaine: Backend/Services
 Exports: NotificationType, ServerNotification, NotificationService
 Liens: appels /api, utils de fetch, types @shared/*
 */
-import { emailAllUsers, sendEmail } from "./txEmail";
+import { emailAllUsers, sendEmail, type EmailSendResult } from "./txEmail";
 import { AuthService } from "./authService";
 import { logger } from "../utils/logger";
 import { MongoNotificationRepository } from "../repositories/mongoNotificationRepository";
@@ -132,74 +132,104 @@ class InMemoryNotificationService {
     // Corps : uniquement le message, pas de titre dupliqué, pas de section "Détails"
     const body = String(item.message || "");
 
-    // Helper retry
-    const retryAsync = async (fn: () => Promise<void>, attempts = 3) => {
-      let lastErr: any = null;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const sendWithRetries = async (
+      fn: () => Promise<EmailSendResult>,
+      attempts = 3,
+    ) => {
+      let lastResult: EmailSendResult | null = null;
       for (let i = 0; i < attempts; i++) {
-        try {
-          await fn();
-          return;
-        } catch (e) {
-          lastErr = e;
-          const wait = 200 * Math.pow(2, i);
-          await new Promise((r) => setTimeout(r, wait));
+        lastResult = await fn();
+        if (
+          !lastResult ||
+          lastResult.requested === 0 ||
+          lastResult.successCount > 0 ||
+          !lastResult.transportAvailable
+        ) {
+          return lastResult;
+        }
+        if (i < attempts - 1) {
+          await wait(200 * Math.pow(2, i));
         }
       }
-      throw lastErr;
+      return lastResult;
     };
 
-    try {
-      if (item.recipients === "all") {
-        await retryAsync(() => emailAllUsers(subject, body, undefined), 3);
-        logger.info("Miroir email (diffusion) envoyé avec succès", "MAIL", {
-          type: item.type,
-        });
-        return;
+    const logResult = (
+      result: EmailSendResult | null,
+      scope: "broadcast" | "targeted",
+    ) => {
+      if (!result) return;
+      const baseData = {
+        type: item.type,
+        scope,
+        requested: result.requested,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      };
+
+      if (result.successCount > 0) {
+        logger.info("Miroir email envoyé", "MAIL", baseData);
       }
 
-      // Map recipient user ids to emails
-      const users = await AuthService.getAllUsers();
-      const emails = users
-        .filter(
-          (u) =>
-            Array.isArray(item.recipients) && item.recipients.includes(u.id),
-        )
-        .map((u) => u.email)
-        .filter(Boolean);
-
-      if (emails.length === 0) {
-        logger.info("Miroir email : aucun destinataire trouvé (skip)", "MAIL", {
-          type: item.type,
+      if (result.failureCount > 0) {
+        logger.warn("Certaines diffusions email ont échoué", "MAIL", {
+          ...baseData,
+          failures: result.failures.slice(0, 5).map((f) => ({
+            email: f.email,
+            code: f.code,
+          })),
         });
-        return;
       }
 
-      await retryAsync(() => sendEmail(emails, subject, body, undefined), 3);
-      logger.info("Miroir email envoyé avec succès", "MAIL", {
-        type: item.type,
-      });
-    } catch (e) {
-      const err: any = e;
-      const code = err?.responseCode || err?.code || "unknown";
-      const is504 =
-        String(code) === "504" || /\b504\b/.test(String(err?.message || ""));
-      logger.error("Échec du mirroring des emails après tentatives", "MAIL", {
-        message: String((e as Error)?.message),
-        code,
-        type: item.type,
-      });
-      // Also surface to client via a system notification without re-mirroring
-      const safeMsg = is504
-        ? "Erreur d'envoi d'email (504 Gateway Timeout). Réessayer plus tard."
-        : "Erreur d'envoi d'email. Réessayer plus tard.";
-      await this.add({
-        type: "system",
-        title: "Erreur d'envoi d'email",
-        message: safeMsg,
-        data: { skipEmailMirror: true, emailError: true, code },
-        recipients: "all",
-      });
+      if (
+        result.successCount === 0 &&
+        result.failureCount > 0 &&
+        result.transportAvailable
+      ) {
+        logger.error("Diffusion email échouée (aucun succès)", "MAIL", {
+          ...baseData,
+          lastError: result.lastError,
+        });
+      }
+
+      if (!result.transportAvailable) {
+        logger.warn("Diffusion email ignorée (transport indisponible)", "MAIL", {
+          ...baseData,
+          lastError: result.lastError,
+        });
+      }
+    };
+
+    if (item.recipients === "all") {
+      const result = await sendWithRetries(
+        () => emailAllUsers(subject, body, undefined),
+      );
+      logResult(result, "broadcast");
+      return;
     }
+
+    // Map recipient user ids to emails
+    const users = await AuthService.getAllUsers();
+    const emails = users
+      .filter(
+        (u) => Array.isArray(item.recipients) && item.recipients.includes(u.id),
+      )
+      .map((u) => u.email)
+      .filter(Boolean);
+
+    if (emails.length === 0) {
+      logger.info("Miroir email : aucun destinataire trouvé (skip)", "MAIL", {
+        type: item.type,
+      });
+      return;
+    }
+
+    const result = await sendWithRetries(
+      () => sendEmail(emails, subject, body, undefined),
+    );
+    logResult(result, "targeted");
   }
 
   /**
