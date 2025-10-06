@@ -26,6 +26,16 @@ let lastTransportError: string | null = null;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
+function renderProgressBar(processed: number, total: number): string {
+  const width = 20;
+  if (total <= 0) return `[${"-".repeat(width)}] 0% (0/0)`;
+  const ratio = Math.min(Math.max(processed / total, 0), 1);
+  const filled = Math.round(ratio * width);
+  const bar = `${"#".repeat(filled)}${"-".repeat(Math.max(width - filled, 0))}`;
+  const percentage = Math.round(ratio * 100);
+  return `[${bar}] ${percentage}% (${processed}/${total})`;
+}
+
 export function sanitizeEmails(
   raw: Array<string | null | undefined> | string | null | undefined,
   options: { context?: string; logInvalid?: boolean } = {},
@@ -250,6 +260,14 @@ export async function sendEmail(
 
     let successCount = 0;
     const failed: Array<{ email: string; message: string; code?: string }> = [];
+    const total = recipients.length;
+    let processed = 0;
+
+    logger.info(
+      `Démarrage envoi emails (${total} destinataire${total > 1 ? "s" : ""})`,
+      "MAIL",
+    );
+    logger.info(renderProgressBar(processed, total), "MAIL");
 
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
@@ -277,6 +295,8 @@ export async function sendEmail(
             context: type,
           });
         }
+        processed += 1;
+        logger.info(renderProgressBar(processed, total), "MAIL");
       }
 
       if (i + BATCH_SIZE < recipients.length && BATCH_DELAY_MS > 0) {
