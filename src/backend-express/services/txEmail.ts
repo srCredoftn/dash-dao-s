@@ -12,6 +12,43 @@ import { logger } from "../utils/logger";
 import type { Dao, DaoTask } from "@shared/dao";
 import { AuthService } from "./authService";
 
+export type InvalidEmailReportStage = "sendEmail" | "emailAllUsers";
+export interface InvalidEmailReport {
+  context: string;
+  invalid: string[];
+  stage: InvalidEmailReportStage;
+  requestedCount: number;
+  validCount: number;
+  timestamp: string;
+}
+
+type InvalidEmailReporter = (
+  report: InvalidEmailReport,
+) => void | Promise<void>;
+
+let invalidEmailReporter: InvalidEmailReporter | null = null;
+
+export function registerInvalidEmailReporter(
+  reporter: InvalidEmailReporter | null,
+) {
+  invalidEmailReporter = reporter;
+}
+
+async function notifyInvalidEmails(report: InvalidEmailReport) {
+  if (!invalidEmailReporter || report.invalid.length === 0) {
+    return;
+  }
+  try {
+    await invalidEmailReporter(report);
+  } catch (error) {
+    logger.warn("Invalid email reporter failed", "MAIL", {
+      message: String((error as Error)?.message || error),
+      context: report.context,
+      stage: report.stage,
+    });
+  }
+}
+
 // Diagnostics (mémoire) pour aider au debug des emails
 const emailEvents: Array<{
   ts: string;
@@ -213,7 +250,8 @@ export async function sendEmail(
   type?: MailType,
 ): Promise<void> {
   const smtpSubject = (subject && subject.trim()) || "Gestion des DAOs 2SND";
-  const { valid: recipients, invalid } = sanitizeEmails(toArray(to), {
+  const requestedRecipients = toArray(to);
+  const { valid: recipients, invalid } = sanitizeEmails(requestedRecipients, {
     context: type || smtpSubject,
     logInvalid: false,
   });
@@ -222,6 +260,14 @@ export async function sendEmail(
     logger.warn("Invalid recipients skipped before send", "MAIL", {
       context: type || smtpSubject,
       invalid,
+    });
+    await notifyInvalidEmails({
+      context: type || smtpSubject,
+      invalid,
+      stage: "sendEmail",
+      requestedCount: requestedRecipients.length,
+      validCount: recipients.length,
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -533,6 +579,14 @@ export async function emailAllUsers(
     logger.warn("emailAllUsers skipped invalid addresses", "MAIL", {
       context: type || "emailAllUsers",
       invalid,
+    });
+    await notifyInvalidEmails({
+      context: type || "emailAllUsers",
+      invalid,
+      stage: "emailAllUsers",
+      requestedCount: combined.length,
+      validCount: valid.length,
+      timestamp: new Date().toISOString(),
     });
   }
 

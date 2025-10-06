@@ -9,6 +9,7 @@ Performance: cache/partitionnement/bundling optimisés
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { notificationsApi } from "@/services/notificationsApi";
+import { toast } from "@/hooks/use-toast";
 
 export type ClientNotification = {
   id: string;
@@ -138,6 +139,45 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
       }
       (window as any)[seenKey] = seen;
+    } catch {}
+  }, [notifications]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const seenKey = "__seen_invalid_email_toasts__";
+      const globalObj = window as unknown as Record<string, unknown>;
+      const existing = globalObj[seenKey];
+      const seen =
+        existing instanceof Set ? (existing as Set<string>) : new Set<string>();
+      for (const n of notifications) {
+        if (seen.has(n.id)) continue;
+        const invalidList = Array.isArray(n.data?.invalidEmails)
+          ? (n.data.invalidEmails as string[])
+          : [];
+        if (invalidList.length === 0) continue;
+        const preview = invalidList.slice(0, 3).join(", ");
+        const remaining =
+          invalidList.length > 3 ? ` (+${invalidList.length - 3} autres)` : "";
+        const contextLabel =
+          typeof n.data?.invalidEmailContext === "string" &&
+          n.data.invalidEmailContext.trim()
+            ? n.data.invalidEmailContext.trim()
+            : n.title;
+        const descriptionParts = [
+          `Impossible d'envoyer un email pour « ${contextLabel} ».`,
+        ];
+        if (preview) {
+          descriptionParts.push(`Adresses ignorées : ${preview}${remaining}.`);
+        }
+        toast({
+          title: "Adresses email invalides détectées",
+          description: descriptionParts.join(" "),
+          duration: 8000,
+        });
+        seen.add(n.id);
+      }
+      (globalObj as any)[seenKey] = seen;
     } catch {}
   }, [notifications]);
 
