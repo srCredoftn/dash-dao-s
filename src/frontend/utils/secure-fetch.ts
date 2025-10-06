@@ -336,9 +336,9 @@ export class SecureFetch {
       }
     }
 
-    // Si toutes les tentatives ont échoué
-    console.error(
-      `❌ Toutes les tentatives de secure fetch ont échoué pour : ${url}`,
+    // Si toutes les tentatives ont échoué, tenter un repli XHR silencieux
+    console.warn(
+      `⚠️ Toutes les tentatives fetch ont échoué, essai XHR pour : ${url}`,
     );
 
     // Dernière tentative: XHR direct pour contourner les interceptions (même origine requise)
@@ -359,8 +359,17 @@ export class SecureFetch {
       });
       return xhrResponse;
     } catch (xhrErr) {
-      console.warn("Le repli XHR a échoué :", (xhrErr as Error).message);
+      const fallbackError = xhrErr as Error;
+      console.warn("Le repli XHR a échoué :", fallbackError.message);
+      if (!lastError) {
+        lastError = fallbackError;
+      }
     }
+
+    // Si même le repli XHR échoue, journaliser l'erreur critique
+    console.error(
+      `❌ Toutes les tentatives de secure fetch ont échoué pour : ${url}`,
+    );
 
     // Améliorer le message d'erreur
     if (lastError) {

@@ -68,6 +68,41 @@ interface NewUserForm {
   password: string;
 }
 
+function generatePasswordValue(length = 12): string {
+  const charset =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+    const values = new Uint32Array(length);
+    window.crypto.getRandomValues(values);
+    return Array.from(values, (value) => charset[value % charset.length]).join(
+      "",
+    );
+  }
+  return Array.from({ length }, () =>
+    charset.charAt(Math.floor(Math.random() * charset.length)),
+  ).join("");
+}
+
+function normalizeDisplayName(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => {
+      const lower = part.toLocaleLowerCase("fr-FR");
+      const first = lower.charAt(0).toLocaleUpperCase("fr-FR");
+      return `${first}${lower.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function autoNameFromEmail(email: string): string {
+  const local = email.split("@")[0] || "";
+  if (!local) return "";
+  const cleaned = local.replace(/[._-]+/g, " ");
+  return normalizeDisplayName(cleaned);
+}
+
 export default function UserManagement() {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
@@ -78,6 +113,7 @@ export default function UserManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
 
   const [newUserForm, setNewUserForm] = useState<NewUserForm>({
     name: "",
@@ -88,6 +124,14 @@ export default function UserManagement() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deletePassword, setDeletePassword] = useState("");
+
+  const clearFieldError = (field: keyof NewUserForm) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const { [field]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [processingDelete, setProcessingDelete] = useState(false);
 
