@@ -74,7 +74,9 @@ function generatePasswordValue(length = 12): string {
   if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
     const values = new Uint32Array(length);
     window.crypto.getRandomValues(values);
-    return Array.from(values, (value) => charset[value % charset.length]).join("");
+    return Array.from(values, (value) => charset[value % charset.length]).join(
+      "",
+    );
   }
   return Array.from({ length }, () =>
     charset.charAt(Math.floor(Math.random() * charset.length)),

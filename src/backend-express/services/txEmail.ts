@@ -253,9 +253,7 @@ export async function sendEmail(
   const transport = await getTransport();
   if (transport) {
     const fromAddress =
-      process.env.SMTP_FROM ||
-      process.env.SMTP_USER ||
-      "no-reply@example.com";
+      process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@example.com";
     const from = `"Gestion des DAOs 2SND" <${fromAddress}>`;
 
     let successCount = 0;
@@ -318,7 +316,9 @@ export async function sendEmail(
     if (failed.length > 0) {
       logger.warn("Envoi terminé avec erreurs partielles", "MAIL", {
         context: type,
-        failures: failed.slice(0, 5).map((f) => ({ email: f.email, code: f.code })),
+        failures: failed
+          .slice(0, 5)
+          .map((f) => ({ email: f.email, code: f.code })),
         failureCount: failed.length,
         successCount,
       });
