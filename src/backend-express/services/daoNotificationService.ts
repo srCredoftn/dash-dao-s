@@ -34,6 +34,9 @@ export function resolveDaoTeamUserIds(
 ): string[] {
   const recipients = new Set<string>();
   if (!dao) {
+    for (const user of users) {
+      if (user?.id) recipients.add(user.id);
+    }
     return Array.from(recipients);
   }
 
@@ -89,6 +92,10 @@ export function resolveDaoTeamUserIds(
       const admin = byEmail.get(adminEmail);
       if (admin) recipients.add(admin.id);
     }
+  }
+
+  for (const user of users) {
+    if (user?.id) recipients.add(user.id);
   }
 
   return Array.from(recipients);
