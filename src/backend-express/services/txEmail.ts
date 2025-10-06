@@ -12,6 +12,41 @@ import { logger } from "../utils/logger";
 import type { Dao, DaoTask } from "@shared/dao";
 import { AuthService } from "./authService";
 
+export type InvalidEmailReportStage = "sendEmail" | "emailAllUsers";
+export interface InvalidEmailReport {
+  context: string;
+  invalid: string[];
+  stage: InvalidEmailReportStage;
+  requestedCount: number;
+  validCount: number;
+  timestamp: string;
+}
+
+type InvalidEmailReporter = (report: InvalidEmailReport) => void | Promise<void>;
+
+let invalidEmailReporter: InvalidEmailReporter | null = null;
+
+export function registerInvalidEmailReporter(
+  reporter: InvalidEmailReporter | null,
+) {
+  invalidEmailReporter = reporter;
+}
+
+async function notifyInvalidEmails(report: InvalidEmailReport) {
+  if (!invalidEmailReporter || report.invalid.length === 0) {
+    return;
+  }
+  try {
+    await invalidEmailReporter(report);
+  } catch (error) {
+    logger.warn("Invalid email reporter failed", "MAIL", {
+      message: String((error as Error)?.message || error),
+      context: report.context,
+      stage: report.stage,
+    });
+  }
+}
+
 // Diagnostics (mémoire) pour aider au debug des emails
 const emailEvents: Array<{
   ts: string;
