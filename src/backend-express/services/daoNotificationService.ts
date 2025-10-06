@@ -61,7 +61,8 @@ export function resolveDaoTeamUserIds(
 
   if (options.includeAdmin !== false) {
     const adminEmail =
-      normalizeEmail(options.adminEmail) || normalizeEmail(process.env.ADMIN_EMAIL);
+      normalizeEmail(options.adminEmail) ||
+      normalizeEmail(process.env.ADMIN_EMAIL);
     if (adminEmail) {
       const admin = byEmail.get(adminEmail);
       if (admin?.id) {
