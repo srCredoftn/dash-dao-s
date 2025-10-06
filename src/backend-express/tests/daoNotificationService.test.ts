@@ -88,9 +88,7 @@ describe("resolveDaoTeamUserIds", () => {
       extraUserIds: ["user-assigned"],
     });
 
-    expect(new Set(recipients)).toEqual(
-      new Set(baseUsers.map((u) => u.id)),
-    );
+    expect(new Set(recipients)).toEqual(new Set(baseUsers.map((u) => u.id)));
   });
 
   it("returns all users when dao is missing", () => {

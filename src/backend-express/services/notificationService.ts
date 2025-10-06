@@ -209,8 +209,8 @@ class InMemoryNotificationService {
       };
 
       if (item.recipients === "all") {
-        const result = await sendWithRetries(
-          () => emailAllUsers(subject, body, undefined),
+        const result = await sendWithRetries(() =>
+          emailAllUsers(subject, body, undefined),
         );
         logResult(result, "broadcast");
         return;
@@ -220,7 +220,8 @@ class InMemoryNotificationService {
       const users = await AuthService.getAllUsers();
       const emails = users
         .filter(
-          (u) => Array.isArray(item.recipients) && item.recipients.includes(u.id),
+          (u) =>
+            Array.isArray(item.recipients) && item.recipients.includes(u.id),
         )
         .map((u) => u.email)
         .filter(Boolean);
@@ -232,8 +233,8 @@ class InMemoryNotificationService {
         return;
       }
 
-      const result = await sendWithRetries(
-        () => sendEmail(emails, subject, body, undefined),
+      const result = await sendWithRetries(() =>
+        sendEmail(emails, subject, body, undefined),
       );
       logResult(result, "targeted");
     } catch (error) {
