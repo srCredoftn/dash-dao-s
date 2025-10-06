@@ -23,9 +23,10 @@ function normalizeEmail(email: string | undefined | null): string | null {
 }
 
 /**
- * Résout les identifiants utilisateur à notifier pour un DAO donné.
- * - Associe les membres d’équipe aux utilisateurs actifs (par id ou email)
- * - Optionnellement ajoute l’acteur, le super admin et les assignés de tâches
+ * Construit la liste des destinataires pour une notification liée à un DAO.
+ * Tous les utilisateurs actifs sont inclus par défaut afin de diffuser à l’ensemble
+ * de l’organisation, avec la possibilité d’ajouter des identifiants supplémentaires
+ * (acteur, admin, liste manuelle).
  */
 export function resolveDaoTeamUserIds(
   _dao: Dao | null | undefined,
@@ -85,10 +86,10 @@ type NotificationPayload = Pick<
 > & { type: NotificationType };
 
 /**
- * Envoie une notification ciblée à l’équipe d’un DAO.
- * - Identifie les utilisateurs actifs correspondants aux membres/assignés
- * - Inclut l’admin (ADMIN_EMAIL) par défaut pour supervision
- * - Retombe sur une diffusion globale si aucun destinataire trouvé
+ * Envoie une notification liée à un DAO à l’ensemble des utilisateurs actifs.
+ * - Récupère la liste depuis l’annuaire (AuthService)
+ * - Ajoute l’administrateur défini dans la configuration si présent
+ * - Retombe sur une diffusion globale si aucun destinataire n’est disponible
  */
 export async function notifyDaoTeam(
   dao: Dao | null | undefined,
