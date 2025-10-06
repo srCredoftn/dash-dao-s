@@ -17,10 +17,13 @@ const emailEvents: Array<{
   ts: string;
   subject: string;
   toCount: number;
+  successCount: number;
+  failureCount: number;
   success: boolean;
   error?: string;
   context?: string;
   skippedInvalid?: number;
+  failures?: Array<{ email: string; code?: string }>;
 }> = [];
 let lastTransportError: string | null = null;
 
@@ -34,6 +37,16 @@ function renderProgressBar(processed: number, total: number): string {
   const bar = `${"#".repeat(filled)}${"-".repeat(Math.max(width - filled, 0))}`;
   const percentage = Math.round(ratio * 100);
   return `[${bar}] ${percentage}% (${processed}/${total})`;
+}
+
+export interface EmailSendResult {
+  requested: number;
+  successCount: number;
+  failureCount: number;
+  failures: Array<{ email: string; message: string; code?: string }>;
+  skippedInvalid: number;
+  transportAvailable: boolean;
+  lastError?: string | null;
 }
 
 export function sanitizeEmails(
@@ -211,7 +224,7 @@ export async function sendEmail(
   subject: string,
   body: string,
   type?: MailType,
-): Promise<void> {
+): Promise<EmailSendResult> {
   const smtpSubject = (subject && subject.trim()) || "Gestion des DAOs 2SND";
   const { valid: recipients, invalid } = sanitizeEmails(toArray(to), {
     context: type || smtpSubject,
@@ -225,21 +238,35 @@ export async function sendEmail(
     });
   }
 
+  const baseResult: EmailSendResult = {
+    requested: recipients.length,
+    successCount: 0,
+    failureCount: 0,
+    failures: [],
+    skippedInvalid: invalid.length,
+    transportAvailable: false,
+    lastError: null,
+  };
+
   if (recipients.length === 0) {
+    const reason =
+      invalid.length > 0
+        ? "no valid recipients after sanitization"
+        : "no recipients";
+    lastTransportError = reason;
     emailEvents.unshift({
       ts: new Date().toISOString(),
       subject: smtpSubject,
       toCount: 0,
+      successCount: 0,
+      failureCount: 0,
       success: false,
-      error:
-        invalid.length > 0
-          ? "no valid recipients after sanitization"
-          : "no recipients",
+      error: reason,
       context: type,
       skippedInvalid: invalid.length,
     });
     if (emailEvents.length > 50) emailEvents.length = 50;
-    return;
+    return { ...baseResult, lastError: reason };
   }
 
   const html = buildEmailHtml(smtpSubject, body || "");
@@ -252,12 +279,11 @@ export async function sendEmail(
 
   const transport = await getTransport();
   if (transport) {
+    baseResult.transportAvailable = true;
     const fromAddress =
       process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@example.com";
     const from = `"Gestion des DAOs 2SND" <${fromAddress}>`;
 
-    let successCount = 0;
-    const failed: Array<{ email: string; message: string; code?: string }> = [];
     const total = recipients.length;
     let processed = 0;
 
@@ -270,21 +296,27 @@ export async function sendEmail(
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
 
-      for (const email of batch) {
-        try {
-          await transport.sendMail({
+      const settled = await Promise.allSettled(
+        batch.map((email) =>
+          transport.sendMail({
             from,
             to: email,
             subject: smtpSubject,
             text: body || "",
             html,
-          });
-          successCount += 1;
-        } catch (e) {
-          const err: any = e;
+          }),
+        ),
+      );
+
+      settled.forEach((result, index) => {
+        const email = batch[index];
+        if (result.status === "fulfilled") {
+          baseResult.successCount += 1;
+        } else {
+          const err: any = result.reason;
           const code = err?.responseCode || err?.code || "unknown";
-          const message = String((e as Error)?.message || e);
-          failed.push({ email, message, code });
+          const message = String((err as Error)?.message || err);
+          baseResult.failures.push({ email, message, code });
           lastTransportError = message;
           logger.warn("Échec envoi SMTP (email)", "MAIL", {
             email,
@@ -295,58 +327,72 @@ export async function sendEmail(
         }
         processed += 1;
         logger.info(renderProgressBar(processed, total), "MAIL");
-      }
+      });
 
       if (i + BATCH_SIZE < recipients.length && BATCH_DELAY_MS > 0) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
       }
     }
 
+    baseResult.failureCount = baseResult.failures.length;
+    baseResult.lastError =
+      baseResult.failures[baseResult.failures.length - 1]?.message || null;
+
     emailEvents.unshift({
       ts: new Date().toISOString(),
       subject: smtpSubject,
       toCount: recipients.length,
-      success: failed.length === 0,
-      error: failed.length ? `${failed.length} delivery failure(s)` : undefined,
+      successCount: baseResult.successCount,
+      failureCount: baseResult.failureCount,
+      success: baseResult.failureCount === 0 && baseResult.successCount > 0,
+      error:
+        baseResult.failureCount > 0
+          ? `${baseResult.failureCount} delivery failure(s)`
+          : undefined,
       context: type,
       skippedInvalid: invalid.length,
+      failures: baseResult.failures.slice(0, 5).map((f) => ({
+        email: f.email,
+        code: f.code,
+      })),
     });
     if (emailEvents.length > 50) emailEvents.length = 50;
 
-    if (failed.length > 0) {
+    if (baseResult.failureCount > 0) {
       logger.warn("Envoi terminé avec erreurs partielles", "MAIL", {
         context: type,
-        failures: failed
+        failureCount: baseResult.failureCount,
+        successCount: baseResult.successCount,
+        failures: baseResult.failures
           .slice(0, 5)
           .map((f) => ({ email: f.email, code: f.code })),
-        failureCount: failed.length,
-        successCount,
       });
-    } else {
+    }
+    if (baseResult.successCount > 0) {
       lastTransportError = null;
-      logger.info("Envoi terminé avec succès", "MAIL", {
+      logger.info("Envoi terminé", "MAIL", {
         context: type,
-        count: successCount,
+        successCount: baseResult.successCount,
+        failureCount: baseResult.failureCount,
       });
     }
 
-    if (successCount === 0) {
-      throw new Error(lastTransportError || "SMTP send failed");
-    }
-
-    return;
-  } else {
-    emailEvents.unshift({
-      ts: new Date().toISOString(),
-      subject: smtpSubject,
-      toCount: recipients.length,
-      success: false,
-      error: lastTransportError || "No transport",
-      context: type,
-      skippedInvalid: invalid.length,
-    });
-    if (emailEvents.length > 50) emailEvents.length = 50;
+    return baseResult;
   }
+
+  const errorMessage = lastTransportError || "No transport";
+  emailEvents.unshift({
+    ts: new Date().toISOString(),
+    subject: smtpSubject,
+    toCount: recipients.length,
+    successCount: 0,
+    failureCount: 0,
+    success: false,
+    error: errorMessage,
+    context: type,
+    skippedInvalid: invalid.length,
+  });
+  if (emailEvents.length > 50) emailEvents.length = 50;
 
   const preview = (body || "").slice(0, 120).replace(/\s+/g, " ");
   logger.info(
@@ -354,6 +400,8 @@ export async function sendEmail(
     "MAIL",
   );
   if (type) logger.info(`Type d'email: ${type}`, "MAIL");
+
+  return { ...baseResult, lastError: errorMessage };
 }
 
 async function getAllUserEmails(): Promise<string[]> {
@@ -524,7 +572,7 @@ export async function emailAllUsers(
   subject: string,
   body: string,
   type?: MailType,
-) {
+): Promise<EmailSendResult> {
   const baseRecipients = await getAllUserEmails();
   const admin = (process.env.ADMIN_EMAIL || "").trim();
   const combined = admin ? [...baseRecipients, admin] : [...baseRecipients];
@@ -544,10 +592,18 @@ export async function emailAllUsers(
     logger.warn("emailAllUsers aborted: no valid recipients", "MAIL", {
       context: type || "emailAllUsers",
     });
-    return;
+    return {
+      requested: 0,
+      successCount: 0,
+      failureCount: 0,
+      failures: [],
+      skippedInvalid: invalid.length,
+      transportAvailable: false,
+      lastError: "no valid recipients",
+    };
   }
 
-  await sendEmail(valid, subject, body, type);
+  return sendEmail(valid, subject, body, type);
 }
 
 // Diagnostics exposés
@@ -568,7 +624,8 @@ export async function emailAdmin(
   subject: string,
   body: string,
   type?: MailType,
-) {
+): Promise<EmailSendResult | null> {
   const admin = process.env.ADMIN_EMAIL;
-  if (admin) await sendEmail(admin, subject, body, type);
+  if (!admin) return null;
+  return sendEmail(admin, subject, body, type);
 }
