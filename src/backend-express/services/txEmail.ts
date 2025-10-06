@@ -330,10 +330,6 @@ export async function sendEmail(
       });
     }
 
-    if (successCount === 0) {
-      throw new Error(lastTransportError || "SMTP send failed");
-    }
-
     return;
   } else {
     emailEvents.unshift({

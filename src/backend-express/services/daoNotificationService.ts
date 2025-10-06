@@ -23,23 +23,23 @@ function normalizeEmail(email: string | undefined | null): string | null {
 }
 
 /**
- * Résout les identifiants utilisateur à notifier pour un DAO donné.
- * - Associe les membres d’équipe aux utilisateurs actifs (par id ou email)
- * - Optionnellement ajoute l’acteur, le super admin et les assignés de tâches
+ * Construit la liste des destinataires pour une notification liée à un DAO.
+ * Tous les utilisateurs actifs sont inclus par défaut afin de diffuser à l’ensemble
+ * de l’organisation, avec la possibilité d’ajouter des identifiants supplémentaires
+ * (acteur, admin, liste manuelle).
  */
 export function resolveDaoTeamUserIds(
-  dao: Dao | null | undefined,
+  _dao: Dao | null | undefined,
   users: User[],
   options: ResolveRecipientsOptions = {},
 ): string[] {
   const recipients = new Set<string>();
-  if (!dao) {
-    return Array.from(recipients);
-  }
-
-  const byId = new Map<string, User>(users.map((u) => [u.id, u]));
   const byEmail = new Map<string, User>();
+
   for (const user of users) {
+    if (user?.id) {
+      recipients.add(user.id);
+    }
     const key = normalizeEmail(user.email);
     if (key && !byEmail.has(key)) {
       byEmail.set(key, user);
@@ -48,32 +48,8 @@ export function resolveDaoTeamUserIds(
 
   const pushUserId = (userId: string | undefined | null) => {
     if (!userId) return;
-    const user = byId.get(userId);
-    if (user) recipients.add(user.id);
+    recipients.add(userId);
   };
-
-  const pushEmail = (email: string | undefined | null) => {
-    const key = normalizeEmail(email);
-    if (!key) return;
-    const user = byEmail.get(key);
-    if (user) recipients.add(user.id);
-  };
-
-  for (const member of dao.equipe || []) {
-    pushUserId(member.id);
-    pushEmail(member.email);
-  }
-
-  if (options.includeAssignments !== false) {
-    for (const task of dao.tasks || []) {
-      for (const assigned of task.assignedTo || []) {
-        pushUserId(assigned);
-        if (assigned.includes("@")) {
-          pushEmail(assigned);
-        }
-      }
-    }
-  }
 
   if (options.actorId) {
     pushUserId(options.actorId);
@@ -84,10 +60,14 @@ export function resolveDaoTeamUserIds(
   }
 
   if (options.includeAdmin !== false) {
-    const adminEmail = normalizeEmail(options.adminEmail);
+    const adminEmail =
+      normalizeEmail(options.adminEmail) ||
+      normalizeEmail(process.env.ADMIN_EMAIL);
     if (adminEmail) {
       const admin = byEmail.get(adminEmail);
-      if (admin) recipients.add(admin.id);
+      if (admin?.id) {
+        recipients.add(admin.id);
+      }
     }
   }
 
@@ -107,10 +87,10 @@ type NotificationPayload = Pick<
 > & { type: NotificationType };
 
 /**
- * Envoie une notification ciblée à l’équipe d’un DAO.
- * - Identifie les utilisateurs actifs correspondants aux membres/assignés
- * - Inclut l’admin (ADMIN_EMAIL) par défaut pour supervision
- * - Retombe sur une diffusion globale si aucun destinataire trouvé
+ * Envoie une notification liée à un DAO à l’ensemble des utilisateurs actifs.
+ * - Récupère la liste depuis l’annuaire (AuthService)
+ * - Ajoute l’administrateur défini dans la configuration si présent
+ * - Retombe sur une diffusion globale si aucun destinataire n’est disponible
  */
 export async function notifyDaoTeam(
   dao: Dao | null | undefined,

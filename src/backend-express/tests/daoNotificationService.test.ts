@@ -81,26 +81,25 @@ const sampleDao: Dao = {
 };
 
 describe("resolveDaoTeamUserIds", () => {
-  it("collects recipients from team, assignments, actor and admin", () => {
+  it("returns all active user ids when building recipients", () => {
     const recipients = resolveDaoTeamUserIds(sampleDao, baseUsers, {
-      actorId: "user-extra",
       adminEmail: "admin@example.com",
-      extraUserIds: ["user-assigned"],
     });
 
     expect(new Set(recipients)).toEqual(
-      new Set([
-        "user-chef",
-        "user-manual",
-        "user-assigned",
-        "user-extra",
-        "user-admin",
-      ]),
+      new Set(baseUsers.map((user) => user.id)),
     );
   });
 
-  it("returns empty list when dao is missing", () => {
-    const recipients = resolveDaoTeamUserIds(null, baseUsers);
-    expect(recipients).toEqual([]);
+  it("adds extra identifiers without duplicates even when dao is missing", () => {
+    const recipients = resolveDaoTeamUserIds(null, baseUsers, {
+      actorId: "user-extra",
+      extraUserIds: ["custom-extra", "user-chef"],
+      adminEmail: "admin@example.com",
+    });
+
+    expect(new Set(recipients)).toEqual(
+      new Set([...baseUsers.map((user) => user.id), "custom-extra"]),
+    );
   });
 });
