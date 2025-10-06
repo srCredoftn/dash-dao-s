@@ -9,6 +9,7 @@ Performance: cache/partitionnement/bundling optimisés
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { notificationsApi } from "@/services/notificationsApi";
+import { toast } from "@/hooks/use-toast";
 
 export type ClientNotification = {
   id: string;
