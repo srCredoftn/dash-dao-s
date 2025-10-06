@@ -111,6 +111,7 @@ export default function UserManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
 
   const [newUserForm, setNewUserForm] = useState<NewUserForm>({
     name: "",
